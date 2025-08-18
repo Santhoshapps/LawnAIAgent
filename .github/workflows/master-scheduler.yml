@@ -2,7 +2,7 @@ name: Lawn AI Master Scheduler
 
 on:
   schedule:
-    - cron: '* * * * *'   # every minute; your app decides what to do
+    - cron: '* * * * *'   # every minute; your app decides what to run
   workflow_dispatch:
 
 concurrency:
@@ -13,69 +13,40 @@ jobs:
   trigger-app-tasks:
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger cron (try both domains & common paths; require 2xx JSON)
+      - name: Hit cron endpoint (require 2xx + JSON)
         env:
-          BASE: ${{ secrets.APP_DOMAIN }}
-          ALT: ${{ secrets.ALT_APP_DOMAIN }}            # optional second domain
-          AUTH: ${{ secrets.BASE44_API_KEY }}           # optional if your app requires it
+          URL1: ${{ secrets.CRON_URL }}
+          URL2: ${{ secrets.ALT_CRON_URL }}        # optional
+          AUTH: ${{ secrets.BASE44_API_KEY }}      # optional
         run: |
           set -euo pipefail
           mkdir -p _resp
 
-          trim() { printf "%s" "$1" | awk '{$1=$1};1'; }
-          BASE="$(trim "${BASE:-}")"; ALT="$(trim "${ALT:-}")"
-          BASE="${BASE%/}"; ALT="${ALT%/}"
-
-          if [ -z "$BASE" ]; then echo "❌ APP_DOMAIN is empty"; exit 1; fi
-          DOMAINS=("$BASE")
-          if [ -n "$ALT" ] && [ "$ALT" != "$BASE" ]; then DOMAINS+=("$ALT"); fi
-
-          try_url () {
-            URL="$1"
+          choose() {
+            local URL="$1"
+            [ -z "$URL" ] && return 1
             echo "→ GET $URL"
-            HTTP=$(curl -sS -D _resp/h -o _resp/b -w "%{http_code}" \
-                   -H "Accept: application/json" \
-                   -H "User-Agent: GitHub-Actions-MasterScheduler/1.0" \
-                   ${AUTH:+ -H "Authorization: Bearer $AUTH"} \
-                   "$URL" || echo "000")
+            HTTP=$(curl -sS -L -D _resp/h -o _resp/b -w "%{http_code}" \
+                     -H "Accept: application/json" \
+                     -H "User-Agent: GitHub-Actions-MasterScheduler/1.0" \
+                     ${AUTH:+ -H "Authorization: Bearer $AUTH"} \
+                     "$URL" || echo "000")
             CT=$(grep -i '^content-type:' _resp/h || true)
             echo "HTTP $HTTP | $CT"
             if [[ "$HTTP" =~ ^2 ]] && echo "$CT" | grep -qi 'application/json'; then
-              echo "✅ JSON success:"
+              echo "✅ JSON ok:"
               head -n 200 _resp/b
               return 0
             fi
-            echo "⚠️  Not successful JSON; first lines of body:"
+            echo "⚠️  Not 2xx JSON. First lines of body:"
             head -n 20 _resp/b || true
             return 1
           }
 
-          # Common function routes some stacks use
-          PATHS=( \
-            "/api/cronTrigger" \
-            "/api/cron" \
-            "/functions/cronTrigger" \
-            "/cronTrigger" \
-            "/cron/trigger" \
-            "/cron" \
-          )
+          # Try primary, then alternate (if provided)
+          if choose "$URL1"; then exit 0; fi
+          if choose "${URL2:-}"; then exit 0; fi
 
-          for D in "${DOMAINS[@]}"; do
-            D="${D%/}"
-            echo "=== Trying domain: $D ==="
-            for P in "${PATHS[@]}"; do
-              if try_url "$D$P"; then
-                echo "✅ Matched at $D$P"
-                exit 0
-              fi
-              # also try trailing slash
-              if try_url "$D$P/"; then
-                echo "✅ Matched at $D$P/"
-                exit 0
-              fi
-            done
-          done
-
-          echo "❌ No 2xx JSON from any tried route/domain."
-          echo "Tip: Copy the exact endpoint from Base44's Automation Setup and replace PATHS above."
+          echo "❌ Neither CRON_URL nor ALT_CRON_URL returned 2xx JSON."
+          echo "Tip: Paste the exact function URL from Base44's Automation/Functions page into CRON_URL."
           exit 1
