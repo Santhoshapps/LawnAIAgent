@@ -2,16 +2,57 @@ name: Lawn AI Master Scheduler
 
 on:
   schedule:
-    # Runs every minute
-    - cron: '* * * * *'
-  workflow_dispatch: # Allows manual triggering
+    - cron: '* * * * *'   # every minute
+  workflow_dispatch:
+
+concurrency:
+  group: master-scheduler
+  cancel-in-progress: false
 
 jobs:
   trigger-app-tasks:
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger Master Cron Endpoint
+      - name: Trigger Master Cron Endpoint (GET, with fallbacks)
+        env:
+          BASE: ${{ secrets.APP_DOMAIN }}
+          AUTH: ${{ secrets.BASE44_API_KEY }}   # optional; include only if you have one
         run: |
-          curl -X GET "${{ secrets.APP_DOMAIN }}/functions/cronTrigger" \
-            -H "User-Agent: GitHub-Actions-MasterScheduler/1.0" \
-            --fail --silent --show-error
+          set -euo pipefail
+          BASE="${BASE%/}"
+
+          try_get () {
+            URL="$1"
+            echo "GET $URL"
+            mkdir -p _resp
+            # headers -> _resp/h, body -> _resp/b
+            if ! curl -sS -D _resp/h -o _resp/b "$URL" \
+                  -H "Accept: application/json" \
+                  -H "User-Agent: GitHub-Actions-MasterScheduler/1.0" \
+                  ${AUTH:+ -H "Authorization: Bearer $AUTH"} ; then
+              echo "❌ Request failed"
+              return 1
+            fi
+
+            if grep -qi '^content-type:.*application/json' _resp/h; then
+              echo "✅ JSON response:"
+              head -n 200 _resp/b
+              return 0
+            else
+              echo "⚠️  Not JSON (likely app HTML). First lines:"
+              head -n 20 _resp/b
+              return 2
+            fi
+          }
+
+          # Try /api first; then /functions
+          if try_get "$BASE/api/cronTrigger"; then
+            exit 0
+          fi
+
+          if try_get "$BASE/functions/cronTrigger"; then
+            exit 0
+          fi
+
+          echo "❌ Neither /api/cronTrigger nor /functions/cronTrigger returned JSON."
+          exit 1
