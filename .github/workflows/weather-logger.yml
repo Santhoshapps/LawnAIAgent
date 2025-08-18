@@ -2,7 +2,6 @@ name: Weather Logger (4x Daily)
 
 on:
   schedule:
-    # 8 AM, 2 PM, 6 PM, 10 PM ET (DST). UTC: 12:00, 18:00, 22:00, 02:00
     - cron: '0 12,18,22 * * *'
     - cron: '0 2 * * *'
   workflow_dispatch:
@@ -11,15 +10,13 @@ jobs:
   log-weather:
     runs-on: ubuntu-latest
     steps:
-      - name: POST /functions/cronTrigger
+      - name: GET /functions/cronTrigger
         run: |
           set -e
           BASE="${{ secrets.APP_DOMAIN }}"
           BASE="${BASE%/}"
-          echo "POST $BASE/functions/cronTrigger"
-          curl -i -X POST "$BASE/functions/cronTrigger" \
-            -H "Content-Type: application/json" \
+          echo "GET $BASE/functions/cronTrigger"
+          curl -i -X GET "$BASE/functions/cronTrigger" \
             -H "User-Agent: GitHub-Actions-WeatherLogger/1.0" \
-            -d '{}' \
             --silent --show-error --fail
           echo "✅ cronTrigger responded"
