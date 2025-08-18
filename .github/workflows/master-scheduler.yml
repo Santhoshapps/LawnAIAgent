@@ -13,40 +13,37 @@ jobs:
   trigger-app-tasks:
     runs-on: ubuntu-latest
     steps:
-      - name: Hit cron endpoint (require 2xx + JSON)
+      - name: Trigger cron function (require 2xx + JSON)
         env:
-          URL1: ${{ secrets.CRON_URL }}
-          URL2: ${{ secrets.ALT_CRON_URL }}        # optional
-          AUTH: ${{ secrets.BASE44_API_KEY }}      # optional
+          CRON_URL: ${{ secrets.CRON_URL }}
+          BASE44_API_KEY: ${{ secrets.BASE44_API_KEY }}   # optional if your app needs it
         run: |
           set -euo pipefail
+
+          if [ -z "${CRON_URL:-}" ]; then
+            echo "❌ CRON_URL secret is not set"
+            exit 1
+          fi
+
+          echo "→ GET $CRON_URL"
           mkdir -p _resp
+          HTTP=$(curl -sS -L -D _resp/h -o _resp/b -w "%{http_code}" \
+                 -H "Accept: application/json" \
+                 -H "User-Agent: GitHub-Actions-MasterScheduler/1.0" \
+                 ${BASE44_API_KEY:+ -H "Authorization: Bearer $BASE44_API_KEY"} \
+                 --max-time 30 \
+                 "$CRON_URL" || echo "000")
+          CT=$(grep -i '^content-type:' _resp/h || true)
+          echo "HTTP $HTTP | $CT"
 
-          choose() {
-            local URL="$1"
-            [ -z "$URL" ] && return 1
-            echo "→ GET $URL"
-            HTTP=$(curl -sS -L -D _resp/h -o _resp/b -w "%{http_code}" \
-                     -H "Accept: application/json" \
-                     -H "User-Agent: GitHub-Actions-MasterScheduler/1.0" \
-                     ${AUTH:+ -H "Authorization: Bearer $AUTH"} \
-                     "$URL" || echo "000")
-            CT=$(grep -i '^content-type:' _resp/h || true)
-            echo "HTTP $HTTP | $CT"
-            if [[ "$HTTP" =~ ^2 ]] && echo "$CT" | grep -qi 'application/json'; then
-              echo "✅ JSON ok:"
-              head -n 200 _resp/b
-              return 0
-            fi
-            echo "⚠️  Not 2xx JSON. First lines of body:"
-            head -n 20 _resp/b || true
-            return 1
-          }
-
-          # Try primary, then alternate (if provided)
-          if choose "$URL1"; then exit 0; fi
-          if choose "${URL2:-}"; then exit 0; fi
-
-          echo "❌ Neither CRON_URL nor ALT_CRON_URL returned 2xx JSON."
-          echo "Tip: Paste the exact function URL from Base44's Automation/Functions page into CRON_URL."
-          exit 1
+          if [[ "$HTTP" =~ ^2 ]] && echo "$CT" | grep -qi 'application/json'; then
+            echo "✅ JSON success:"
+            head -n 200 _resp/b
+          else
+            echo "⚠️  Not successful JSON. Body (first lines):"
+            head -n 30 _resp/b || true
+            echo ""
+            echo "Headers (first lines):"
+            head -n 20 _resp/h || true
+            exit 1
+          fi
