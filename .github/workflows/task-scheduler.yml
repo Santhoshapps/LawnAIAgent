@@ -9,16 +9,13 @@ jobs:
   check-scheduled-tasks:
     runs-on: ubuntu-latest
     steps:
-      - name: POST /functions/taskScheduler
+      - name: GET /functions/taskScheduler
         run: |
           set -e
           BASE="${{ secrets.APP_DOMAIN }}"
-          # strip trailing slash to avoid double //functions
-          BASE="${BASE%/}"
-          echo "POST $BASE/functions/taskScheduler"
-          curl -i -X POST "$BASE/functions/taskScheduler" \
-            -H "Content-Type: application/json" \
+          BASE="${BASE%/}"  # strip trailing slash
+          echo "GET $BASE/functions/taskScheduler"
+          curl -i -X GET "$BASE/functions/taskScheduler" \
             -H "User-Agent: GitHub-Actions-TaskScheduler/1.0" \
-            -d '{}' \
             --silent --show-error --fail
           echo "✅ taskScheduler responded"
