@@ -1,0 +1,25 @@
+name: Debug Ping
+
+on:
+  workflow_dispatch:
+
+jobs:
+  ping-app:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Base44 Root
+        run: |
+          echo "Pinging root domain..."
+          curl -i "${{ secrets.APP_DOMAIN }}" || echo "❌ Failed"
+
+      - name: Ping Task Scheduler Function
+        run: |
+          echo "Pinging /functions/taskScheduler..."
+          curl -i -X POST "${{ secrets.APP_DOMAIN }}/functions/taskScheduler" \
+            -H "Content-Type: application/json" || echo "❌ Failed"
+
+      - name: Ping Weather Logger Function
+        run: |
+          echo "Pinging /functions/cronTrigger..."
+          curl -i -X POST "${{ secrets.APP_DOMAIN }}/functions/cronTrigger" \
+            -H "Content-Type: application/json" || echo "❌ Failed"
