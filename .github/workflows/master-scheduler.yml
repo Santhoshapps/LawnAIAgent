@@ -2,7 +2,7 @@ name: Lawn AI Master Scheduler
 
 on:
   schedule:
-    - cron: '* * * * *'   # every minute
+    - cron: '* * * * *'   # every minute; app decides what to run
   workflow_dispatch:
 
 concurrency:
@@ -13,46 +13,44 @@ jobs:
   trigger-app-tasks:
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger Master Cron Endpoint (GET, with fallbacks)
+      - name: Trigger cron (prefer /api, fallback /functions)
         env:
           BASE: ${{ secrets.APP_DOMAIN }}
-          AUTH: ${{ secrets.BASE44_API_KEY }}   # optional; include only if you have one
+          AUTH: ${{ secrets.BASE44_API_KEY }}   # optional if your app needs it
         run: |
           set -euo pipefail
           BASE="${BASE%/}"
+          mkdir -p _resp
 
-          try_get () {
+          try_url () {
             URL="$1"
-            echo "GET $URL"
-            mkdir -p _resp
-            # headers -> _resp/h, body -> _resp/b
-            if ! curl -sS -D _resp/h -o _resp/b "$URL" \
-                  -H "Accept: application/json" \
-                  -H "User-Agent: GitHub-Actions-MasterScheduler/1.0" \
-                  ${AUTH:+ -H "Authorization: Bearer $AUTH"} ; then
-              echo "❌ Request failed"
-              return 1
-            fi
-
-            if grep -qi '^content-type:.*application/json' _resp/h; then
-              echo "✅ JSON response:"
+            echo "→ GET $URL"
+            # Capture headers and body, and status code separately
+            HTTP=$(curl -sS -D _resp/h -o _resp/b -w "%{http_code}" \
+                   -H "Accept: application/json" \
+                   -H "User-Agent: GitHub-Actions-MasterScheduler/1.0" \
+                   ${AUTH:+ -H "Authorization: Bearer $AUTH"} \
+                   "$URL" || echo "000")
+            echo "HTTP $HTTP"
+            # Require 2xx AND JSON content-type
+            if [[ "$HTTP" =~ ^2 ]] && grep -qi '^content-type:.*application/json' _resp/h; then
+              echo "✅ JSON success:"
               head -n 200 _resp/b
               return 0
-            else
-              echo "⚠️  Not JSON (likely app HTML). First lines:"
-              head -n 20 _resp/b
-              return 2
             fi
+            echo "⚠️  Not successful JSON. First lines of body:"
+            head -n 30 _resp/b || true
+            return 1
           }
 
-          # Try /api first; then /functions
-          if try_get "$BASE/api/cronTrigger"; then
+          # Try /api first (many stacks), then /functions
+          if try_url "$BASE/api/cronTrigger"; then
+            exit 0
+          fi
+          if try_url "$BASE/functions/cronTrigger"; then
             exit 0
           fi
 
-          if try_get "$BASE/functions/cronTrigger"; then
-            exit 0
-          fi
-
-          echo "❌ Neither /api/cronTrigger nor /functions/cronTrigger returned JSON."
+          echo "❌ Neither /api/cronTrigger nor /functions/cronTrigger returned 2xx JSON."
+          echo "Tip: If Base44 shows a different path on the Automation page, update the URL(s) above."
           exit 1
