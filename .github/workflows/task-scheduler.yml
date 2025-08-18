@@ -2,17 +2,23 @@ name: Task Scheduler (Daily Tests)
 
 on:
   schedule:
-    # Runs every minute to check for scheduled tasks
-    - cron: '* * * * *'
-  workflow_dispatch: # Allows manual triggering
+    - cron: '* * * * *'   # every minute
+  workflow_dispatch:
 
 jobs:
   check-scheduled-tasks:
     runs-on: ubuntu-latest
     steps:
-      - name: Check for Scheduled Daily Tests
+      - name: POST /functions/taskScheduler
         run: |
-          curl -X POST "${{ secrets.APP_DOMAIN }}/functions/taskScheduler" \
+          set -e
+          BASE="${{ secrets.APP_DOMAIN }}"
+          # strip trailing slash to avoid double //functions
+          BASE="${BASE%/}"
+          echo "POST $BASE/functions/taskScheduler"
+          curl -i -X POST "$BASE/functions/taskScheduler" \
             -H "Content-Type: application/json" \
             -H "User-Agent: GitHub-Actions-TaskScheduler/1.0" \
-            --fail --silent --show-error
+            -d '{}' \
+            --silent --show-error --fail
+          echo "✅ taskScheduler responded"
