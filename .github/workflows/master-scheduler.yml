@@ -2,7 +2,7 @@ name: Lawn AI Master Scheduler
 
 on:
   schedule:
-    - cron: '* * * * *'   # every minute; app decides what to run
+    - cron: '* * * * *'   # every minute
   workflow_dispatch:
 
 concurrency:
@@ -13,10 +13,10 @@ jobs:
   trigger-app-tasks:
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger cron (prefer /api, fallback /functions)
+      - name: Trigger cron (prefer /api, fallback /functions; require 2xx JSON)
         env:
           BASE: ${{ secrets.APP_DOMAIN }}
-          AUTH: ${{ secrets.BASE44_API_KEY }}   # optional if your app needs it
+          AUTH: ${{ secrets.BASE44_API_KEY }}   # optional if your app requires it
         run: |
           set -euo pipefail
           BASE="${BASE%/}"
@@ -25,32 +25,40 @@ jobs:
           try_url () {
             URL="$1"
             echo "→ GET $URL"
-            # Capture headers and body, and status code separately
             HTTP=$(curl -sS -D _resp/h -o _resp/b -w "%{http_code}" \
                    -H "Accept: application/json" \
                    -H "User-Agent: GitHub-Actions-MasterScheduler/1.0" \
                    ${AUTH:+ -H "Authorization: Bearer $AUTH"} \
                    "$URL" || echo "000")
-            echo "HTTP $HTTP"
-            # Require 2xx AND JSON content-type
-            if [[ "$HTTP" =~ ^2 ]] && grep -qi '^content-type:.*application/json' _resp/h; then
+            CT=$(grep -i '^content-type:' _resp/h || true)
+            echo "HTTP $HTTP | $CT"
+            if [[ "$HTTP" =~ ^2 ]] && echo "$CT" | grep -qi 'application/json'; then
               echo "✅ JSON success:"
               head -n 200 _resp/b
               return 0
             fi
-            echo "⚠️  Not successful JSON. First lines of body:"
-            head -n 30 _resp/b || true
+            echo "⚠️  Not successful JSON; first lines of body:"
+            head -n 20 _resp/b || true
             return 1
           }
 
-          # Try /api first (many stacks), then /functions
-          if try_url "$BASE/api/cronTrigger"; then
-            exit 0
-          fi
-          if try_url "$BASE/functions/cronTrigger"; then
-            exit 0
-          fi
+          # Try likely function routes (with & without trailing slash)
+          CANDIDATES=(
+            "$BASE/api/cronTrigger"
+            "$BASE/api/cronTrigger/"
+            "$BASE/functions/cronTrigger"
+            "$BASE/functions/cronTrigger/"
+            "$BASE/api/cron"
+            "$BASE/api/cron/"
+          )
 
-          echo "❌ Neither /api/cronTrigger nor /functions/cronTrigger returned 2xx JSON."
-          echo "Tip: If Base44 shows a different path on the Automation page, update the URL(s) above."
+          for U in "${CANDIDATES[@]}"; do
+            if try_url "$U"; then
+              exit 0
+            fi
+          done
+
+          echo "❌ No 2xx JSON from known routes."
+          echo "Tip: Set APP_DOMAIN to the exact env Base44 updated (Preview vs App),"
+          echo "     or paste the precise endpoint path from the Automation Setup page."
           exit 1
