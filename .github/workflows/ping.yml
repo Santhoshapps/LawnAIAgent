@@ -1,25 +1,33 @@
 name: Debug Ping
-
-on:
-  workflow_dispatch:
+on: { workflow_dispatch: {} }
 
 jobs:
   ping-app:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping Root Domain
+      - name: Validate APP_DOMAIN
         run: |
-          echo "Pinging root domain..."
-          curl -i "${{ secrets.APP_DOMAIN }}" || echo "❌ Failed root"
+          DOMAIN="${{ secrets.APP_DOMAIN }}"
+          DOMAIN="$(printf "%s" "$DOMAIN" | awk '{$1=$1};1')"
+          if [ -z "$DOMAIN" ]; then echo "❌ APP_DOMAIN empty"; exit 1; fi
+          case "$DOMAIN" in https://*) ;; *) echo "❌ Must start with https://"; exit 1;; esac
+          echo "✅ APP_DOMAIN present (masked)."
 
-      - name: Ping Task Scheduler Function
+      - name: GET root
         run: |
-          echo "Pinging /functions/taskScheduler..."
-          curl -i -X POST "${{ secrets.APP_DOMAIN }}/functions/taskScheduler" \
-            -H "Content-Type: application/json" || echo "❌ Failed taskScheduler"
+          BASE="${{ secrets.APP_DOMAIN }}"; BASE="${BASE%/}"
+          curl -i "$BASE" || true
 
-      - name: Ping Weather Logger Function
+      - name: POST /functions/taskScheduler
         run: |
-          echo "Pinging /functions/cronTrigger..."
-          curl -i -X POST "${{ secrets.APP_DOMAIN }}/functions/cronTrigger" \
-            -H "Content-Type: application/json" || echo "❌ Failed cronTrigger"
+          BASE='${{ secrets.APP_DOMAIN }}'; BASE="${BASE%/}"
+          curl -i -X POST "$BASE/functions/taskScheduler" \
+            -H "Content-Type: application/json" \
+            -d '{}' || true
+
+      - name: POST /functions/cronTrigger
+        run: |
+          BASE='${{ secrets.APP_DOMAIN }}'; BASE="${BASE%/}"
+          curl -i -X POST "$BASE/functions/cronTrigger" \
+            -H "Content-Type: application/json" \
+            -d '{}' || true
