@@ -1,0 +1,22 @@
+name: Weather Logger (Hourly; server-gated to ET)
+
+on:
+  schedule:
+    # Runs hourly; function checks if it's the right time
+    - cron: '0 * * * *'
+  workflow_dispatch: # Allows manual triggering
+
+jobs:
+  log-weather:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    concurrency:
+      group: weather-logger
+      cancel-in-progress: true
+    steps:
+      - name: Trigger Weather Logging
+        run: |
+          curl -X GET "\${{ secrets.APP_DOMAIN }}/functions/cronTrigger" \
+            -H "User-Agent: GitHub-Actions-WeatherLogger/1.0" \
+            -H "X-Cron-Token: \${{ secrets.CRON_TOKEN }}" \
+            --fail --silent --show-error --max-time 20 --retry 3 --retry-all-errors
