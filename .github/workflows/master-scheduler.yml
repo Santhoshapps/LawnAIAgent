@@ -1,0 +1,40 @@
+name: Lawn AI Master Scheduler
+
+on:
+  # Runs every minute; the server decides what to do at that minute.
+  schedule:
+    - cron: '* * * * *'
+  # Keep manual trigger for testing
+  workflow_dispatch:
+
+# Prevent overlapping runs if one minute overlaps the next
+concurrency:
+  group: master-scheduler
+  cancel-in-progress: false
+
+jobs:
+  master:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call cronTrigger (POST, with GET fallback)
+        env:
+          BASE: ${{ secrets.APP_DOMAIN }}
+          AUTH: ${{ secrets.BASE44_API_KEY }} # optional if your app requires it
+        run: |
+          set -e
+          BASE="${BASE%/}"  # strip trailing slash
+          echo "Master scheduler → $BASE/functions/cronTrigger"
+
+          # Try POST first (preferred)
+          if ! curl -i -X POST "$BASE/functions/cronTrigger" \
+                -H "Content-Type: application/json" \
+                ${AUTH:+ -H "Authorization: Bearer $AUTH"} \
+                -d '{"source":"github-actions"}' \
+                --silent --show-error --fail --max-time 30 ; then
+            echo "POST failed; trying GET fallback…"
+            curl -i -X GET "$BASE/functions/cronTrigger" \
+              ${AUTH:+ -H "Authorization: Bearer $AUTH"} \
+              --silent --show-error --fail --max-time 30
+          fi
+
+          echo "✅ cronTrigger responded"
