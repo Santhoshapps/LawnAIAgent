@@ -7,19 +7,19 @@ jobs:
   ping-app:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping Base44 Root
+      - name: Ping Root Domain
         run: |
           echo "Pinging root domain..."
-          curl -i "${{ secrets.APP_DOMAIN }}" || echo "❌ Failed"
+          curl -i "${{ secrets.APP_DOMAIN }}" || echo "❌ Failed root"
 
       - name: Ping Task Scheduler Function
         run: |
           echo "Pinging /functions/taskScheduler..."
           curl -i -X POST "${{ secrets.APP_DOMAIN }}/functions/taskScheduler" \
-            -H "Content-Type: application/json" || echo "❌ Failed"
+            -H "Content-Type: application/json" || echo "❌ Failed taskScheduler"
 
       - name: Ping Weather Logger Function
         run: |
           echo "Pinging /functions/cronTrigger..."
           curl -i -X POST "${{ secrets.APP_DOMAIN }}/functions/cronTrigger" \
-            -H "Content-Type: application/json" || echo "❌ Failed"
+            -H "Content-Type: application/json" || echo "❌ Failed cronTrigger"
