@@ -16,7 +16,7 @@ jobs:
     steps:
       - name: Ping taskScheduler
         run: |
-          curl -X GET "\${{ secrets.APP_DOMAIN }}/functions/taskScheduler" \
+          curl -X GET "${{ secrets.APP_DOMAIN }}/functions/taskScheduler" \
             -H "User-Agent: GitHub-Actions-TaskScheduler/1.0" \
-            -H "X-Cron-Token: \${{ secrets.CRON_TOKEN }}" \
+            -H "X-Cron-Token: ${{ secrets.CRON_TOKEN }}" \
             --fail --silent --show-error --max-time 20 --retry 3 --retry-all-errors
