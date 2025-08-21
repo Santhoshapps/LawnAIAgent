@@ -1,5 +1,27 @@
-name: Task Scheduler (Reports + Tests) on: schedule: - cron: "*/5 * * * *" # every 5 minutes (UTC) workflow_dispatch: {} # allow manual runs permissions: contents: read concurrency: group: "task-scheduler" cancel-in-progress: false jobs: check-scheduled-tasks: runs-on: ubuntu-latest timeout-minutes: 5 steps: - name: Ping fiveMinuteScheduler run: | set -e curl -i -L -X GET "${{ secrets.APP_DOMAIN }}/functions/fiveMinuteScheduler"
--H "Accept: application/json"
--H "User-Agent: GH-Actions Cron"
--H "X-Cron-Token: ${{ secrets.CRON_TOKEN }}"
---fail --silent --show-error --max-time 25 --retry 3 --retry-all-errors
+name: Task Scheduler (Reports + Tests)
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"   # every 5 minutes (UTC)
+  workflow_dispatch: {}      # allow manual runs
+
+permissions:
+  contents: read
+
+concurrency:
+  group: "task-scheduler"
+  cancel-in-progress: false
+
+jobs:
+  check-scheduled-tasks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping fiveMinuteScheduler
+        run: |
+          set -euo pipefail
+          curl -i -L -X GET "${{ secrets.APP_DOMAIN }}/functions/fiveMinuteScheduler" \
+            -H "Accept: application/json" \
+            -H "User-Agent: GH-Actions Cron" \
+            -H "X-Cron-Token: ${{ secrets.CRON_TOKEN }}" \
+            --fail --silent --show-error --max-time 25 --retry 3 --retry-all-errors
